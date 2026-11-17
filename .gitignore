@@ -1,0 +1,4 @@
+data/users.txt
+data/scores.txt
+data/saves/*
+!data/saves/.gitkeep
