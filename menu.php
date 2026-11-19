@@ -6,7 +6,7 @@ require_login();
 $active = !empty($_SESSION['active']);
 $scenes = game_scenes();
 
-page_header('Case File');
+page_header('Main Menu');
 ?>
 <p>Welcome, <?= e((string) $_SESSION['user']) ?>.</p>
 <?php if ($active && isset($scenes[$_SESSION['scene']])): ?>

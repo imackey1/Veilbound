@@ -12,8 +12,8 @@ if (!$rows): ?>
 <?php else: ?>
   <div class="table-wrap">
   <table>
-    <caption>Top 10 sorcerers</caption>
-    <thead><tr><th scope="col">Rank</th><th scope="col">Sorcerer</th><th scope="col">Score</th><th scope="col">Ending</th><th scope="col">Moves</th></tr></thead>
+    <caption>Top 10 players</caption>
+    <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Score</th><th scope="col">Ending</th><th scope="col">Moves</th></tr></thead>
     <tbody>
     <?php foreach ($rows as $i => $row): ?>
       <tr<?= $row['name'] === $_SESSION['user'] ? ' class="me"' : '' ?>>

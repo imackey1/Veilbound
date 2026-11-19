@@ -14,7 +14,11 @@ $ending = $endings[$result['ending']];
 page_header($ending['title']);
 ?>
 <img class="scene-img" src="images/<?= e($ending['image']) ?>" width="800" height="450" alt="<?= e($ending['alt']) ?>">
-<p class="story"><?= e($ending['text']) ?></p>
+<div class="story">
+<?php foreach ($ending['text'] as $paragraph): ?>
+  <p><?= e($paragraph) ?></p>
+<?php endforeach; ?>
+</div>
 <h2>Your path</h2>
 <ul>
 <?php foreach ($result['summary'] as $line): ?>

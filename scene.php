@@ -21,14 +21,17 @@ $scene = $scenes[$state['scene']];
 page_header($scene['title']);
 ?>
 <div class="stats" aria-label="Your stats">
-  <?php stat_bar('Aether', $state['aether']); ?>
-  <?php stat_bar('Resolve', $state['resolve']); ?>
-  <p>Items: <strong><?= count($state['inventory']) ?></strong> / <?= count(game_items()) ?> &middot; Moves: <strong><?= $state['steps'] ?></strong></p>
+  <?php stat_bar('Perspective', $state['insight']); ?>
+  <p>Score: <strong><?= $state['score'] ?></strong> &middot; Moves: <strong><?= $state['steps'] ?></strong></p>
 </div>
 <img class="scene-img" src="images/<?= e($scene['image']) ?>" width="800" height="450" alt="<?= e($scene['alt']) ?>">
-<p class="story"><?= e($scene['text']) ?></p>
-<?php if ($state['resolve'] < 30): ?>
-  <p class="flash flash-error" role="alert">Your resolve is dangerously low. One more setback could end your run.</p>
+<div class="story">
+<?php foreach (scene_paragraphs($scene, $state) as $paragraph): ?>
+  <p><?= e($paragraph) ?></p>
+<?php endforeach; ?>
+</div>
+<?php if ($state['health'] < 30): ?>
+  <p class="flash flash-error" role="alert">You’re barely standing. One more beating could finish you.</p>
 <?php endif; ?>
 
 <ul class="choices">
@@ -42,6 +45,7 @@ page_header($scene['title']);
       <input type="hidden" name="choice" value="<?= $i ?>">
       <button type="submit" class="choice<?= $lock !== null ? ' locked' : '' ?>"<?= $lock !== null ? ' disabled aria-disabled="true"' : '' ?>>
         <span class="choice-label"><?= ($i + 1) . '. ' . e($choice['label']) ?></span>
+        <?php if (!empty($choice['detail'])): ?><span class="choice-detail"><?= e($choice['detail']) ?></span><?php endif; ?>
         <span class="preview"><?= e(choice_preview($choice, $state)) ?></span>
       </button>
     </form>
@@ -49,4 +53,6 @@ page_header($scene['title']);
 <?php endforeach; ?>
 </ul>
 <p><a href="inventory.php">View inventory</a></p>
-<?php page_footer();
+<?php
+items_panel($state);
+page_footer();

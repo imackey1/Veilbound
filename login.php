@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     delete_save($name);
                     flash('Your save file was invalid and was discarded.', 'error');
                 }
-                flash('Welcome, sorcerer.', 'success');
+                flash('Welcome back.', 'success');
             }
             redirect('menu.php');
         }

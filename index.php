@@ -5,11 +5,11 @@ require __DIR__ . '/inc/bootstrap.php';
 if (is_logged_in()) {
     redirect('menu.php');
 }
-page_header('Veilbound');
+page_header('Grunt');
 ?>
-<img class="scene-img" src="images/rooftop.svg" width="800" height="450" alt="City skyline at dusk seen from a rooftop">
-<p>The seal on the Meridian Arcade has broken, and Hollows are leaking into the city. You are a rookie sorcerer of the Lantern Order, and the choices you make, and the items you carry, decide what happens next.</p>
-<p>Nine pages. Four choices on each. Three possible endings.</p>
+<img class="scene-img" src="images/alley.svg" width="800" height="450" alt="A rainy alley with balconies and a man in a suit sheltering under one">
+<p>This district feeds off the blood of the weak. Today you set off to change your life, and the choices you make, and what you carry, decide how it ends.</p>
+<p>Seven places. Four choices at each. Three endings. Mature themes: violence and crime.</p>
 <p class="actions">
   <a class="button" href="login.php">Log in</a>
   <a class="button secondary" href="register.php">Create an account</a>

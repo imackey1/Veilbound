@@ -1,69 +1,48 @@
-# Veilbound
+# Grunt
 
-A modern-sorcerer **Choose Your Path** game built with PHP, HTML5, and CSS3.
-**CSC 4370 Web Programming, Fall 2026, Georgia State University: Project 2 (Topic 05)**
+A choose-your-path noir game in PHP, HTML and CSS (no JavaScript, no database) for CSC 4370/6370 Project 2, Topic 05. Written and built by Ibrahim Mackey (solo team, Section 002, CRN 82835).
 
-- **Author (solo team):** Ibrahim Mackey, Section 002, CRN 82835
-- **GitHub:** https://github.com/imackey1/Veilbound
-- **CODD:** https://codd.cs.gsu.edu/~imackey1/web/PW/Veilbound
+*Mature themes: violence and crime.*
 
-You are a rookie sorcerer of the Lantern Order. The seal on the Meridian Arcade has broken and Hollows are leaking into the city. Explore nine illustrated pages, collect items, and choose one of three endings. Items you collect are kept by PHP and unlock new choices on later pages.
+Live: https://codd.cs.gsu.edu/~imackey1/web/PW/Veilbound 
 
 ## How to play
 
-1. Register an account, then log in.
-2. Choose **New Game**. Each page shows one image, a story passage, and **four choices**.
-3. Under every choice, a **consequence preview** tells you what it will do (items gained, stat changes, odds of success).
-4. Locked choices show what you need (for example, *Requires Veil Key*). Find the item elsewhere, then come back.
-5. Reach an ending to get a score on the leaderboard.
+You are a nobody in a district that feeds on the weak. You set out to rob a gambling den and change your life. Register, log in, start a game, and pick one of four choices on each of seven pages. Health, Perspective, score and carried items are tracked. The items you carry always appear as emojis in the bottom-right corner (🔫 revolver, 🔪 knife, ⛓️ gold chain, 🪙 chips, 💵 cash). Progress saves automatically, so Continue resumes where you stopped, even after logging out.
 
-Endings: **The Veil Holds** (true), **Hollow Crown** (dark), **The Lantern Goes Dark** (defeat).
+The same seven pages play differently depending on earlier choices: arriving wet gets you patted down and disarmed, arriving with the rich man skips the search, an empty revolver reads as empty, and page text changes with what you carry.
+
+## Endings
+
+| Ending | How | Bonus |
+| --- | --- | --- |
+| **Enough** (good) | Reach the vault by the gun route (force an attendant at gunpoint) with Perspective 75+, gained by watching the people the casino has ruined, then open the vault | 300 |
+| **The Assistant** | Arrive with the rich man, spend time listening to him, then accept his job | 200 |
+| **The Cycle** (bad) | Rob a winner, take the money without understanding, trip the alarm, get cut, or run out of health. Every bad ending shows the same message | 0 |
+
+Final score = points from items (revolver 10, knife 10, gold chain 50, chips 20, cash 40, awarded when obtained) + ending bonus.
 
 ## Requirements covered
 
-| Rubric requirement | Where |
-| --- | --- |
-| Sessions and leaderboard | `$_SESSION` holds all game state (`inc/game.php`); runs are ranked in `$_SESSION['leaderboard']` and shown by `leaderboard.php` (also mirrored to `data/scores.txt` so other players' scores appear) |
-| Form processing | Register, login, new game, and every choice are POST forms validated server-side (`register.php`, `login.php`, `actions.php`) with success and error messages |
-| Registration and login | `password_hash()` / `password_verify()`, session guard on every protected page, `logout.php` destroys the session |
-| PHP game logic | Scene array, item gates, fight checks, stats, scoring, and endings in `inc/scenes.php` and `inc/game.php` |
-| Choose Your Path flow | Story-node array, session-tracked node and stats (aether, resolve), conditional choices, terminal endings, final score on the leaderboard |
-
-No JavaScript and no database are used.
+- Sessions: scene, health, Perspective, inventory, flags, score and history live in `$_SESSION`.
+- POST forms for every choice, register, login and logout, with CSRF tokens and Post/Redirect/Get.
+- Registration and login with `password_hash()` / `password_verify()`; passwords never stored in plain text.
+- Game logic in PHP: item requirements, locked choices, deterministic seeded luck at the roulette table, health loss, pat-down on entry, flag-based text changes.
+- Leaderboard: top 10 kept in `$_SESSION['leaderboard']` and mirrored to `data/scores.txt`.
+- Three distinct endings with a dynamic summary built from items, flags, Perspective and choice history.
+- Four choices per page, an image per page, responsive layout, keyboard focus styles, alt text.
 
 ## In-app AI feature (undergraduate baseline)
 
-**Consequence preview and dynamic ending summary** (rule-based PHP, no external service).
-
-- **Data it uses:** choice metadata in `inc/scenes.php` (item gain, stat effects, fight power), the player's aether, resolve and inventory, and the session history log (`$_SESSION['history']`, one entry per choice with outcome `ok`, `item`, or `fail`).
-- **Preview rule (`choice_preview()` in `inc/game.php`):**
-  - Fight power = aether + the power bonus of every owned item (Warding Salt +15, Silver Lantern +20, Mentor's Ledger +10).
-  - Margin = fight power minus the fight's required power. Margin >= 15 is **Safe**, 0 to 14 is **Even odds**, below 0 is **Risky**. A fight succeeds when margin >= 0.
-  - Adds item gain, stat changes, failure cost, whether the next page was already explored, and a warning after two failed fights in a row (history).
-  - The preview never makes the choice for the player and never reveals hidden items.
-- **Ending summary rule (`ending_summary()`):** counts items collected, fights attempted and lost, moves, and locations visited from the history log, then selects matching sentences.
-- **Limitation:** previews come from fixed metadata, so they explain the rules but do not predict story consequences beyond stats and items. The summary uses simple thresholds, not language understanding.
+- **Consequence preview:** under every choice the app shows a rule-based hint computed from the choice data and your history (for example "Costs health", "Gains an item", "+25 perspective", "Already done", or a luck warning). Final choices say "Final choice: no turning back" and never reveal which ending they lead to.
+- **Dynamic ending summary:** the ending page lists what you carried, what you did and what you understood, generated from your session data.
 
 ## Test notes
 
-Automated end-to-end checks were run against a local PHP server (`php -S`) and all passed (53 checks). Manual cases to repeat on CODD:
+`php -S` plus the Python script `tests/e2e.py` (urllib and cookies) drove the game end to end. 26 checks, all passing:
+good route (score 310), assistant route (220), bad route by robbery, pat-down disarming, unarmed robbery (-25 health), snatch without a knife (-20), health reaching 0 ending the game, locked and forged choices rejected, stale scene and bad CSRF rejected, save restore after logout/login, tampered save file handled safely, leaderboard ordering, empty and filled item panel. Layout was checked at 375 px and 1100 px with no horizontal overflow.
 
-| ID | Case | Input | Expected |
-| --- | --- | --- | --- |
-| TC-1 | Login failure | Right username, wrong password | Error shown, username kept, no session |
-| TC-2 | Session guard | Open `scene.php` logged out | Redirect to `login.php` |
-| TC-3 | Item persistence | Take Silver Lantern, log out, log in | Lantern still in inventory, game continues |
-| TC-4 | Locked choice | Lobby without Veil Key | Stairs choice disabled, shows "Requires Veil Key" |
-| TC-5 | Forged POST | Submit locked choice manually | Rejected on the server, scene unchanged |
-| TC-6 | Page shape | Open every page | One image and exactly four choices |
-| TC-7 | Preview (normal) | Food Court with aether 40, no items | Fight shows Risky (power 40 vs 60) |
-| TC-7b | Tampered save | Edit save file to aether 999 and an unknown item | Save discarded, message shown |
-| TC-8 | Preview/fight boundary | Aether 40 + Silver Lantern = power 60 vs 60 | "Even odds"; the fight succeeds. With Salt only (55 vs 60): "Risky"; the fight fails |
-| TC-9 | Resolve reaches 0 | Lose fights repeatedly | Ending C (The Lantern Goes Dark) |
-| TC-10 | All endings | Seal (Rune + Lantern), take power, flee or lose | Endings A, B, C each reachable once with a score |
-| TC-11 | Responsive layout | View at 360 px width | No horizontal page scroll; labeled fields; visible focus |
-| TC-12 | Leaderboard | Finish two runs | Both ranked high to low; reloading ending page adds no duplicate |
-| TC-13 | Safe output | Register as `<b>x</b>` | Rejected by validation; any echoed text is escaped |
+**Manual checks to repeat on CODD:** register, log in, play one full route, log out and back in to confirm Continue, check the leaderboard, and confirm `data/users.txt` cannot be opened from the browser.
 
 ## Setup
 
@@ -77,6 +56,8 @@ Automated end-to-end checks were run against a local PHP server (`php -S`) and a
 2. Make the data folders writable: `chmod 777 data data/saves` (or `775` if PHP runs as your user).
 3. Open https://codd.cs.gsu.edu/~imackey1/web/PW/Veilbound.
 
+**Troubleshooting:** if registering says "data folder is not writable", both `data` and `data/saves` must be writable by PHP: run `chmod 777 data data/saves` and check with `ls -ld data data/saves` (both should show `drwxrwxrwx`).
+
 Written for PHP 7.4 or newer (developed and tested on PHP 8.3).
 
 ## Files
@@ -84,12 +65,12 @@ Written for PHP 7.4 or newer (developed and tested on PHP 8.3).
 | Path | Purpose |
 | --- | --- |
 | `index.php`, `register.php`, `login.php`, `logout.php`, `menu.php` | Entry, accounts, and menu |
-| `scene.php` | Story page: image, text, four choices with previews |
+| `scene.php` | Story page: image, text, four choices with previews, bottom-right emoji item panel |
 | `actions.php` | Controller (no HTML): validates every choice, applies rules, saves, redirects (Post/Redirect/Get) |
 | `inventory.php`, `ending.php`, `leaderboard.php` | Items and stats, ending and summary, top 10 |
 | `inc/` | `bootstrap.php`, `helpers.php`, `auth.php`, `game.php`, `scenes.php` (story data), `leaderboard.php`, `layout.php` |
 | `css/style.css` | Responsive layout, focus styles |
-| `images/` | Twelve original SVG illustrations |
+| `images/` | Ten original SVG illustrations (7 pages + 3 endings) |
 | `data/` | `users.txt`, `scores.txt`, `saves/` (created at run time; web access blocked by `.htaccess`) |
 
 ## Security notes
@@ -102,6 +83,8 @@ Written for PHP 7.4 or newer (developed and tested on PHP 8.3).
 
 ## Credits and AI-use disclosure
 
-- **Artwork:** all twelve images are original SVG files generated by a script written for this project. No third-party images are used.
+- **Story:** the opening premise, the apartment, alley, gambling den, tables, and vault drafts, the choice labels, and all endings were written by Ibrahim Mackey and are kept in his wording. 
+- **Code:** all PHP, CSS and the test scripts were built off of Ibrahim's initial code with Claude then run and tested locally.
+- **Artwork:** all ten images are original SVG files generated by a script written for this project. No third-party images are used.
 - **External code or libraries:** none.
-- **AI tools:** The application code (PHP), CSS, SVG artwork script, test script, and drafts of this README and the development journal were generated with Claude (Anthropic) at the direction of Ibrahim Mackey, then run and tested locally. The game concept, story, scope, and requirements decisions are Ibrahim's. *Ibrahim: edit this section so it states exactly what you wrote, changed, or reviewed yourself.*
+- **Changes from the proposal:** the proposal described a modern-sorcerer concept with 9 pages. The final game is the noir story above with 7 pages (28 choices), because the story was rewritten after the proposal.

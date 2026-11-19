@@ -1,14 +1,14 @@
 :root {
-  --bg: #0e0b1a;
-  --panel: #1a1530;
-  --panel-2: #241d44;
-  --text: #ece8ff;
-  --muted: #b3acd6;
-  --accent: #8f7bff;
-  --accent-2: #ffd36b;
-  --danger: #ff7a8a;
+  --bg: #0d0d0f;
+  --panel: #17171b;
+  --panel-2: #212127;
+  --text: #ece9e2;
+  --muted: #a9a59a;
+  --accent: #c9a24b;
+  --accent-2: #e8c46a;
+  --danger: #ff6b6b;
   --ok: #6be2a4;
-  --border: #3a3263;
+  --border: #38383f;
 }
 
 * { box-sizing: border-box; }
@@ -41,7 +41,7 @@ nav a { color: var(--text); }
 main { width: 100%; max-width: 860px; margin: 0 auto; padding: 1rem; flex: 1; }
 h1 { font-family: "Trebuchet MS", sans-serif; font-size: 1.7rem; margin: .5rem 0 1rem; color: var(--accent-2); }
 h2 { font-family: "Trebuchet MS", sans-serif; font-size: 1.2rem; color: var(--accent); }
-a { color: #b9adff; }
+a { color: #e0b95c; }
 
 a:focus-visible, button:focus-visible, input:focus-visible {
   outline: 3px solid var(--accent-2);
@@ -60,9 +60,24 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .choices { list-style: none; margin: 1rem 0; padding: 0; display: grid; gap: .6rem; }
 .choices form { margin: 0; }
 
+progress { accent-color: var(--accent); }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.choice-detail { color: var(--muted); font-size:.95rem; font-style: italic; }
+.story p { margin: .6rem 0; }
+
+.items-panel {
+  position: fixed; right: .75rem; bottom: .75rem; z-index: 5;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px;
+  padding: .4rem .6rem; box-shadow: 0 4px 14px rgba(0,0,0,.6); max-width: calc(100vw - 1.5rem);
+}
+.items-panel ul { list-style: none; margin: 0; padding: 0; display: flex; gap: .5rem; }
+.items-panel .emoji { font-size: 1.7rem; line-height: 1; }
+.items-empty { color: var(--muted); font-size: .85rem; }
+main { padding-bottom: 5rem; }
+
 button, .button {
   display: inline-block; font: inherit; font-family: "Trebuchet MS", sans-serif;
-  background: var(--accent); color: #0e0b1a; border: 0; border-radius: 8px;
+  background: var(--accent); color: #0d0d0f; border: 0; border-radius: 8px;
   padding: .7rem 1.1rem; cursor: pointer; text-decoration: none; font-weight: bold; min-height: 44px;
 }
 button:hover, .button:hover { filter: brightness(1.1); }
@@ -82,7 +97,7 @@ button.choice.locked { opacity: .6; cursor: not-allowed; border-style: dashed; }
 .card label.inline { display: flex; align-items: center; gap: .5rem; }
 .card button { margin-top: 1rem; }
 input[type="text"], input[type="password"] {
-  width: 100%; font: inherit; padding: .6rem .7rem; border-radius: 8px; border: 1px solid var(--border); background: #120e24; color: var(--text); min-height: 44px;
+  width: 100%; font: inherit; padding: .6rem .7rem; border-radius: 8px; border: 1px solid var(--border); background: #111114; color: var(--text); min-height: 44px;
 }
 
 .flash { padding: .6rem .9rem; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); margin: .5rem 0; }

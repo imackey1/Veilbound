@@ -12,9 +12,8 @@ if (empty($_SESSION['active'])) {
 $state = game_state();
 ?>
 <div class="stats">
-  <?php stat_bar('Aether', $state['aether']); ?>
-  <?php stat_bar('Resolve', $state['resolve']); ?>
-  <p>Fight power: <strong><?= player_power($state) ?></strong> (aether plus item bonuses)</p>
+  <?php stat_bar('Perspective', $state['insight']); ?>
+  <p>Score: <strong><?= $state['score'] ?></strong></p>
 </div>
 <?php if (!$state['inventory']): ?>
   <p>You carry nothing yet.</p>
@@ -24,7 +23,8 @@ $state = game_state();
     $owned = in_array($id, $state['inventory'], true); ?>
   <li class="<?= $owned ? 'owned' : 'missing' ?>">
     <?php if ($owned): ?>
-      <strong><?= e($item['name']) ?></strong> <span><?= e($item['desc']) ?></span>
+      <strong><span aria-hidden="true"><?= $item['emoji'] ?></span> <?= e(item_label($id, $state)) ?></strong>
+      <span><?= e($item['desc']) ?> (+<?= (int) $item['points'] ?> points when found)</span>
     <?php else: ?>
       <strong>Unknown item</strong> <span>Not found yet.</span>
     <?php endif; ?>

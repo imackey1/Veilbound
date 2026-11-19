@@ -5,7 +5,7 @@ declare(strict_types=1);
 
 function game_keys(): array
 {
-    return ['scene', 'aether', 'resolve', 'inventory', 'flags', 'visited', 'history', 'steps', 'active'];
+    return ['scene', 'health', 'insight', 'inventory', 'flags', 'visited', 'history', 'steps', 'score', 'seed', 'active'];
 }
 
 function game_state(): array
@@ -35,9 +35,10 @@ function clear_game_state(): void
 function new_game_state(): array
 {
     return [
-        'scene' => 'rooftop', 'aether' => 40, 'resolve' => 100,
-        'inventory' => [], 'flags' => [], 'visited' => ['rooftop'],
-        'history' => [], 'steps' => 0, 'active' => true,
+        'scene' => 'apartment', 'health' => 100, 'insight' => 0,
+        'inventory' => [], 'flags' => [], 'visited' => ['apartment'],
+        'history' => [], 'steps' => 0, 'score' => 0,
+        'seed' => random_int(1, 2147483647), 'active' => true,
     ];
 }
 
@@ -49,6 +50,16 @@ function clamp_stat(int $value): int
 function item_name(string $id): string
 {
     return game_items()[$id]['name'] ?? $id;
+}
+
+/** Display name; the revolver shows as empty once its bullet is spent. */
+function item_label(string $id, array $state): string
+{
+    $name = item_name($id);
+    if ($id === 'revolver' && !in_array('bullet', $state['flags'], true)) {
+        $name .= ' (empty)';
+    }
+    return $name;
 }
 
 /* ---------- Save file (backup of the session, validated on load) ---------- */
@@ -69,9 +80,10 @@ function save_game(string $user, array $state): void
         return;
     }
     $line = implode('|', [
-        $state['scene'], $state['aether'], $state['resolve'],
+        $state['scene'], $state['health'], $state['insight'],
         implode(',', $state['inventory']), implode(',', $state['flags']),
         implode(',', $state['visited']), $state['steps'], implode(',', $state['history']),
+        $state['score'], $state['seed'],
     ]);
     @file_put_contents(save_path($user), $line . "\n", LOCK_EX);
 }
@@ -99,13 +111,14 @@ function validate_state(array $state): ?array
     if (!is_string($state['scene']) || !isset($scenes[$state['scene']])) {
         return null;
     }
-    foreach (['aether', 'resolve', 'steps'] as $key) {
+    foreach (['health', 'insight', 'steps', 'score', 'seed'] as $key) {
         if (!is_int($state[$key])) {
             return null;
         }
     }
-    if ($state['aether'] < 0 || $state['aether'] > 100 || $state['resolve'] < 1 || $state['resolve'] > 100
-        || $state['steps'] < 0 || $state['steps'] > 500) {
+    if ($state['health'] < 1 || $state['health'] > 100 || $state['insight'] < 0 || $state['insight'] > 100
+        || $state['steps'] < 0 || $state['steps'] > 500 || $state['score'] < 0 || $state['score'] > 5000
+        || $state['seed'] < 1 || $state['seed'] > 2147483647) {
         return null;
     }
     foreach ($state['inventory'] as $id) {
@@ -113,8 +126,9 @@ function validate_state(array $state): ?array
             return null;
         }
     }
+    $known = game_known_flags();
     foreach ($state['flags'] as $flag) {
-        if (!in_array($flag, game_known_flags(), true)) {
+        if (!in_array($flag, $known, true)) {
             return null;
         }
     }
@@ -127,7 +141,7 @@ function validate_state(array $state): ?array
         return null;
     }
     foreach ($state['history'] as $entry) {
-        if (!preg_match('/^([a-z]+):([0-3]):(ok|fail|item)$/', $entry, $m) || !isset($scenes[$m[1]])) {
+        if (!preg_match('/^([a-z_]+):([0-3]):(ok|item|hurt)$/', $entry, $m) || !isset($scenes[$m[1]])) {
             return null;
         }
     }
@@ -144,23 +158,101 @@ function load_saved_game(string $user): ?array
         return null;
     }
     $line = trim((string) @file_get_contents(save_path($user)));
-    $parts = explode('|', $line);
-    if (count($parts) !== 8 || !ctype_digit($parts[1]) || !ctype_digit($parts[2]) || !ctype_digit($parts[6])) {
+    $p = explode('|', $line);
+    if (count($p) !== 10 || !ctype_digit($p[1]) || !ctype_digit($p[2]) || !ctype_digit($p[6])
+        || !ctype_digit($p[8]) || !ctype_digit($p[9])) {
         return null;
     }
     return validate_state([
-        'scene' => $parts[0], 'aether' => (int) $parts[1], 'resolve' => (int) $parts[2],
-        'inventory' => split_list($parts[3]), 'flags' => split_list($parts[4]),
-        'visited' => split_list($parts[5]), 'steps' => (int) $parts[6], 'history' => split_list($parts[7]),
+        'scene' => $p[0], 'health' => (int) $p[1], 'insight' => (int) $p[2],
+        'inventory' => split_list($p[3]), 'flags' => split_list($p[4]),
+        'visited' => split_list($p[5]), 'steps' => (int) $p[6], 'history' => split_list($p[7]),
+        'score' => (int) $p[8], 'seed' => (int) $p[9],
     ]);
 }
 
-/* ---------- Choice rules ---------- */
+/* ---------- Conditions and story text ---------- */
 
-function ends_with_fail(string $entry): bool
+/** True when the player has acted on the current page before. */
+function scene_seen(array $state): bool
 {
-    return substr($entry, -5) === ':fail';
+    foreach ($state['history'] as $entry) {
+        if (strpos($entry, $state['scene'] . ':') === 0) {
+            return true;
+        }
+    }
+    return false;
 }
+
+function cond_met(?array $cond, array $state): bool
+{
+    if (!$cond) {
+        return true;
+    }
+    $owns = static function (string $id) use ($state): bool {
+        return in_array($id, $state['inventory'], true);
+    };
+    $flagged = static function (string $flag) use ($state): bool {
+        return in_array($flag, $state['flags'], true);
+    };
+    foreach ($cond['has'] ?? [] as $id) {
+        if (!$owns($id)) {
+            return false;
+        }
+    }
+    if (!empty($cond['has_any'])) {
+        $any = false;
+        foreach ($cond['has_any'] as $id) {
+            $any = $any || $owns($id);
+        }
+        if (!$any) {
+            return false;
+        }
+    }
+    foreach ($cond['not_has'] ?? [] as $id) {
+        if ($owns($id)) {
+            return false;
+        }
+    }
+    foreach ($cond['flag'] ?? [] as $flag) {
+        if (!$flagged($flag)) {
+            return false;
+        }
+    }
+    foreach ($cond['not_flag'] ?? [] as $flag) {
+        if ($flagged($flag)) {
+            return false;
+        }
+    }
+    foreach ($cond['min'] ?? [] as $stat => $n) {
+        if (($state[$stat] ?? 0) < $n) {
+            return false;
+        }
+    }
+    foreach ($cond['max'] ?? [] as $stat => $n) {
+        if (($state[$stat] ?? 0) > $n) {
+            return false;
+        }
+    }
+    if (isset($cond['seen']) && scene_seen($state) !== $cond['seen']) {
+        return false;
+    }
+    return true;
+}
+
+/** Paragraphs of the current page: every segment whose condition matches. */
+function scene_paragraphs(array $scene, array $state): array
+{
+    $out = [];
+    foreach ($scene['segments'] as $segment) {
+        if (cond_met($segment['if'] ?? null, $state)) {
+            $out[] = $segment['text'];
+        }
+    }
+    return $out;
+}
+
+/* ---------- Choice rules ---------- */
 
 /** Why a choice cannot be used right now, or null when it is available. */
 function choice_lock(array $choice, array $state): ?string
@@ -168,44 +260,35 @@ function choice_lock(array $choice, array $state): ?string
     if (!empty($choice['once']) && in_array($choice['once'], $state['flags'], true)) {
         return 'Already done';
     }
-    if (!empty($choice['give']) && in_array($choice['give'], $state['inventory'], true)) {
-        return 'You already have the ' . item_name($choice['give']);
+    if (!cond_met($choice['requires'] ?? null, $state)) {
+        return $choice['lock'] ?? 'Not available yet';
     }
-    $missing = [];
-    foreach ($choice['requires'] ?? [] as $id) {
-        if (!in_array($id, $state['inventory'], true)) {
-            $missing[] = item_name($id);
+    return null;
+}
+
+/** First outcome whose condition matches the current state. */
+function matching_outcome(array $choice, array $state): array
+{
+    foreach ($choice['outcomes'] as $outcome) {
+        if (cond_met($outcome['if'] ?? null, $state)) {
+            return $outcome;
         }
     }
-    return $missing ? 'Requires ' . implode(' and ', $missing) : null;
+    return end($choice['outcomes']);
 }
 
-/** Aether plus the power bonus of every owned item. */
-function player_power(array $state): int
+/** Deterministic "luck": different per run (seed) and per move, never re-rolled by a reload. */
+function luck_wins(array $state, int $chance): bool
 {
-    $power = $state['aether'];
-    foreach (game_items() as $id => $item) {
-        if (in_array($id, $state['inventory'], true)) {
-            $power += $item['power'];
-        }
-    }
-    return $power;
+    return (crc32($state['seed'] . '|' . $state['steps']) % 100) < $chance;
 }
 
-function odds_label(int $margin): string
-{
-    if ($margin >= 15) {
-        return 'Safe';
-    }
-    return $margin >= 0 ? 'Even odds' : 'Risky';
-}
-
-/** Number of failed fights at the end of the history (setback streak). */
+/** Number of hurtful choices at the end of the history (setback streak). */
 function setback_streak(array $state): int
 {
     $streak = 0;
     foreach (array_reverse($state['history']) as $entry) {
-        if (!ends_with_fail($entry)) {
+        if (substr($entry, -5) !== ':hurt') {
             break;
         }
         $streak++;
@@ -213,9 +296,15 @@ function setback_streak(array $state): int
     return $streak;
 }
 
+function names_of(array $ids): string
+{
+    return implode(', ', array_map('item_name', $ids));
+}
+
 /**
  * Consequence preview shown under every choice. Built only from the choice's
- * metadata and the player's session state and history (no hidden information).
+ * metadata (its matching outcome) and the player's session state and history.
+ * It never reveals which ending a final choice leads to.
  */
 function choice_preview(array $choice, array $state): string
 {
@@ -223,79 +312,117 @@ function choice_preview(array $choice, array $state): string
     if ($lock !== null) {
         return $lock;
     }
+    $o = matching_outcome($choice, $state);
+    if (isset($o['ending'])) {
+        return 'Final choice: no turning back';
+    }
     $parts = [];
-    if (!empty($choice['give'])) {
-        $parts[] = 'Gain: ' . item_name($choice['give']);
+    if (!empty($o['take'])) {
+        $parts[] = 'Cost: ' . names_of($o['take']);
     }
-    if (!empty($choice['aether'])) {
-        $parts[] = sprintf('%+d aether', $choice['aether']);
+    if (isset($o['luck'])) {
+        $parts[] = sprintf('Luck: %d%% to win', $o['luck']['chance']);
+        $gain = $o['luck']['win']['give'] ?? [];
+    } else {
+        $gain = $o['give'] ?? [];
     }
-    if (!empty($choice['resolve'])) {
-        $parts[] = sprintf('%+d resolve', $choice['resolve']);
+    if ($gain) {
+        $parts[] = 'Reward: ' . names_of($gain);
     }
-    if (isset($choice['check'])) {
-        $power = player_power($state);
-        $need = $choice['check']['power'];
-        $parts[] = sprintf('Odds: %s (power %d vs %d)', odds_label($power - $need), $power, $need);
-        $parts[] = sprintf('failure costs %d resolve', abs($choice['check']['fail_resolve']));
+    if (in_array('bullet', $o['unset'] ?? [], true)) {
+        $parts[] = 'Spends your only bullet';
+    }
+    $health = $o['health'] ?? 0;
+    if ($health < 0) {
+        $parts[] = sprintf('Risky: %d health', $health);
+        if ($state['health'] + $health <= 0) {
+            $parts[] = 'could kill you';
+        }
         if (setback_streak($state) >= 2) {
-            $parts[] = 'warning: two setbacks in a row';
+            $parts[] = 'warning: you are being beaten down';
         }
     }
-    if (isset($choice['ending']) && !isset($choice['check'])) {
-        $parts[] = 'Final choice';
+    if (!empty($o['insight'])) {
+        $parts[] = sprintf('+%d perspective', $o['insight']);
     }
-    if (isset($choice['next']) && !isset($choice['ending'])) {
-        $parts[] = in_array($choice['next'], $state['visited'], true) ? 'Already explored' : 'Unexplored';
+    if (isset($o['next']) && $o['next'] !== $state['scene']) {
+        $parts[] = in_array($o['next'], $state['visited'], true) ? 'Already explored' : 'Unexplored';
     }
     return $parts ? implode(' | ', $parts) : 'Safe';
 }
 
+/** Apply a rule's item/flag changes (shared by outcomes and on_enter rules). */
+function apply_changes(array &$state, array $o): void
+{
+    foreach ($o['take'] ?? [] as $id) {
+        $state['inventory'] = array_values(array_diff($state['inventory'], [$id]));
+    }
+    foreach ($o['give'] ?? [] as $id) {
+        if (!in_array($id, $state['inventory'], true)) {
+            $state['inventory'][] = $id;
+            $state['score'] += game_items()[$id]['points'];
+        }
+    }
+    foreach ($o['set'] ?? [] as $flag) {
+        if (!in_array($flag, $state['flags'], true)) {
+            $state['flags'][] = $flag;
+        }
+    }
+    foreach ($o['unset'] ?? [] as $flag) {
+        $state['flags'] = array_values(array_diff($state['flags'], [$flag]));
+    }
+}
+
 /**
- * Apply a validated choice to the state. Returns
- * ['outcome' => ok|fail|item, 'message' => string, 'ending' => ?string].
+ * Apply a validated choice. Returns
+ * ['outcome' => ok|item|hurt, 'message' => string, 'ending' => ?string].
  */
 function apply_choice(array &$state, array $choice, string $sceneId, int $index): array
 {
+    $o = matching_outcome($choice, $state);
+    if (isset($o['luck'])) {
+        $side = luck_wins($state, $o['luck']['chance']) ? 'win' : 'lose';
+        $o = array_merge($o, $o['luck'][$side]);
+        unset($o['luck']);
+    }
+
+    apply_changes($state, $o);
+    $state['health'] = clamp_stat($state['health'] + ($o['health'] ?? 0));
+    $state['insight'] = clamp_stat($state['insight'] + ($o['insight'] ?? 0));
+    if (!empty($choice['once']) && !in_array($choice['once'], $state['flags'], true)) {
+        $state['flags'][] = $choice['once'];
+    }
+
     $outcome = 'ok';
-    $message = $choice['note'] ?? '';
-    $next = $choice['next'] ?? $sceneId;
-    $ending = $choice['ending'] ?? null;
-
-    $failed = false;
-    if (isset($choice['check']) && player_power($state) < $choice['check']['power']) {
-        $failed = true;
-        $outcome = 'fail';
-        $state['resolve'] = clamp_stat($state['resolve'] + $choice['check']['fail_resolve']);
-        $message = $choice['check']['fail_note'];
-        $next = $choice['check']['fail_next'] ?? $sceneId;
-        $ending = $choice['check']['fail_ending'] ?? null;
+    if (($o['health'] ?? 0) < 0) {
+        $outcome = 'hurt';
+    } elseif (!empty($o['give'])) {
+        $outcome = 'item';
     }
 
-    if (!$failed) {
-        $state['aether'] = clamp_stat($state['aether'] + ($choice['aether'] ?? 0));
-        $state['resolve'] = clamp_stat($state['resolve'] + ($choice['resolve'] ?? 0));
-        if (!empty($choice['give'])) {
-            $state['inventory'][] = $choice['give'];
-            $outcome = 'item';
-        }
-        if (!empty($choice['once'])) {
-            $state['flags'][] = $choice['once'];
-        }
-    }
-
+    $message = $o['text'] ?? '';
+    $ending = $o['ending'] ?? null;
     $state['steps']++;
     $state['history'][] = $sceneId . ':' . $index . ':' . $outcome;
     $state['history'] = array_slice($state['history'], -200);
 
-    if ($ending === null && $state['resolve'] <= 0) {
-        $ending = 'C';
-        $message = 'Your resolve is gone. The Hollows close in.';
+    if ($ending === null && $state['health'] <= 0) {
+        $ending = 'bad';
+        $message = trim($message . ' You can’t get back up.');
     }
     if ($ending === null) {
+        $next = $o['next'] ?? $sceneId;
+        $moved = $next !== $sceneId;
         $state['scene'] = $next;
         if (!in_array($next, $state['visited'], true)) {
             $state['visited'][] = $next;
+        }
+        if ($moved) {
+            foreach (game_scenes()[$next]['on_enter'] ?? [] as $rule) {
+                if (cond_met($rule['if'] ?? null, $state)) {
+                    apply_changes($state, $rule);
+                }
+            }
         }
     }
     return ['outcome' => $outcome, 'message' => $message, 'ending' => $ending];
@@ -305,50 +432,47 @@ function apply_choice(array &$state, array $choice, string $sceneId, int $index)
 
 function final_score(array $state, string $ending): int
 {
-    $base = game_endings()[$ending]['base'];
-    $score = $base + $state['aether'] * 2 + $state['resolve'] * 2 + count($state['inventory']) * 25
-        - max(0, $state['steps'] - 15) * 5;
-    return max(0, $score);
+    return max(0, $state['score'] + game_endings()[$ending]['bonus']);
 }
 
-/** Dynamic ending summary built from the session history. */
+/** Dynamic ending summary built from the session history and flags. */
 function ending_summary(array $state, string $ending): array
 {
-    $items = count($state['inventory']);
-    $total = count(game_items());
-    $fails = 0;
-    $fights = 0;
-    foreach ($state['history'] as $entry) {
-        [$sceneId, $idx] = explode(':', $entry);
-        $choice = game_scenes()[$sceneId]['choices'][(int) $idx] ?? [];
-        if (isset($choice['check'])) {
-            $fights++;
-        }
-        if (ends_with_fail($entry)) {
-            $fails++;
-        }
-    }
+    $has = static function (string $flag) use ($state): bool {
+        return in_array($flag, $state['flags'], true);
+    };
     $lines = [];
-    if ($items === 0) {
-        $lines[] = 'You walked in with nothing but nerve.';
-    } elseif ($items >= 5) {
-        $lines[] = sprintf('You gathered nearly everything the Order left behind (%d of %d items).', $items, $total);
+    $count = count($state['inventory']);
+    if ($count === 0) {
+        $lines[] = 'You carried nothing at the end, only what you had in you.';
     } else {
-        $lines[] = sprintf('You carried %d of %d possible items into the arcade.', $items, $total);
+        $verb = ['bad' => 'You died holding', 'good' => 'You reached the vault carrying', 'assistant' => 'You carried'][$ending] ?? 'You carried';
+        $lines[] = $verb . ': ' . implode(', ', array_map(static function (string $id) use ($state): string {
+            return game_items()[$id]['emoji'] . ' ' . item_label($id, $state);
+        }, $state['inventory'])) . '.';
     }
-    if ($fights === 0) {
-        $lines[] = 'You avoided every fight you could.';
-    } elseif ($fails === 0) {
-        $lines[] = sprintf('You won all %d of your fights.', $fights);
+    if ($ending === 'assistant') {
+        $lines[] = 'You took the rich man’s hand and became his assistant, and his friend.';
+    } elseif ($has('shot_man')) {
+        $lines[] = 'You shot a man in an alley and never looked back.';
+    } elseif ($has('with_rich_man')) {
+        $lines[] = 'You rode in on a stranger’s kindness, and you never paid it back.';
+    } elseif ($has('look_wet')) {
+        $lines[] = 'You came to the den soaked and desperate.';
     } else {
-        $lines[] = sprintf('You lost %d of %d fights, and the setbacks left their mark.', $fails, $fights);
+        $lines[] = 'You slipped in dry and quiet.';
     }
-    $lines[] = $state['steps'] <= 15
-        ? sprintf('You finished in just %d moves, a fast and decisive route.', $state['steps'])
-        : sprintf('It took you %d moves across %d locations.', $state['steps'], count($state['visited']));
-    if ($ending === 'A' && $items < $total) {
-        $lines[] = 'Some secrets stayed hidden, so a second run may reveal more.';
+    $lives = intdiv($state['insight'], 25);
+    $lines[] = $lives === 0
+        ? 'You never stopped to look at anyone else.'
+        : sprintf('You stopped to look at %d part%s of the lives wealth buys.', $lives, $lives === 1 ? '' : 's');
+    $hurt = 0;
+    foreach ($state['history'] as $entry) {
+        $hurt += substr($entry, -5) === ':hurt' ? 1 : 0;
     }
+    $lines[] = $hurt === 0
+        ? sprintf('It took %d moves, and nobody laid a hand on you.', $state['steps'])
+        : sprintf('It took %d moves, and you were beaten down %d time%s along the way.', $state['steps'], $hurt, $hurt === 1 ? '' : 's');
     return $lines;
 }
 

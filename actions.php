@@ -19,7 +19,7 @@ if ($action === 'new_game') {
     $state = new_game_state();
     set_game_state($state);
     save_game($user, $state);
-    flash('A new case begins.', 'success');
+    flash('A new game begins.', 'success');
     redirect('scene.php');
 }
 
